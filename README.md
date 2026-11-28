@@ -37,6 +37,18 @@ This repo is **frontend only** – contributors can improve the design, add new 
     npm run dev
     ```
 
+### Seller access
+
+Seller API routes read the seller role from Clerk's signed session claims. In the Clerk Dashboard, open **Sessions** → **Customize session token** and add this claim:
+
+```json
+{
+  "public_metadata": "{{user.public_metadata}}"
+}
+```
+
+Set a seller's **Public metadata** to `{"role":"seller"}`. After saving the session claim, sign out and back in so Clerk issues a token containing the claim.
+
 ---
 
 ## Contributing

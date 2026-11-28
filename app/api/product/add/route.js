@@ -17,16 +17,30 @@ export async function POST(request) {
 
     try {
 
-        const { userId } = await auth()
+        const { userId, sessionClaims } = await auth()
 
         if (!userId) {
             return NextResponse.json({ success: false, message: 'Please sign in to add a product' }, { status: 401 })
         }
 
-        const isSeller = await authSeller(userId)
+        const isSeller = authSeller(sessionClaims)
 
         if (!isSeller){
-            return NextResponse.json({success: false, message: 'Only seller accounts can add products'}, { status: 403 })
+            const debug = process.env.NODE_ENV === 'development'
+                ? {
+                    sessionClaimKeys: Object.keys(sessionClaims ?? {}),
+                    publicMetadataType: typeof sessionClaims?.public_metadata,
+                    role: typeof sessionClaims?.public_metadata?.role === 'string'
+                        ? sessionClaims.public_metadata.role
+                        : null
+                }
+                : undefined
+
+            return NextResponse.json({
+                success: false,
+                message: 'Seller role not found in this Clerk session.',
+                ...(debug && { debug })
+            }, { status: 403 })
     
         }
 
@@ -84,7 +98,37 @@ export async function POST(request) {
         
 
     } catch (error) {
-        return NextResponse.json({ success: false, message: error.message }, { status: 500 })
+        if (error?.name === 'UnexpectedResponse' && error?.http_code === 403) {
+            try {
+                await cloudinary.api.ping()
+                const debug = process.env.NODE_ENV === 'development'
+                    ? { cloudinaryApiPing: 'passed' }
+                    : undefined
+
+                return NextResponse.json({
+                    success: false,
+                    message: 'Cloudinary accepted the API credentials but denied the upload. Check upload permissions and account restrictions.',
+                    ...(debug && { debug })
+                }, { status: 500 })
+            } catch (pingError) {
+                const debug = process.env.NODE_ENV === 'development'
+                    ? {
+                        cloudinaryApiPing: 'failed',
+                        pingStatus: pingError?.http_code ?? null
+                    }
+                    : undefined
+
+                return NextResponse.json({
+                    success: false,
+                    message: 'Cloudinary denied the upload and its API check also failed. Verify the API key access and account environment.',
+                    ...(debug && { debug })
+                }, { status: 500 })
+            }
+        }
+
+        const message = error instanceof Error ? error.message : 'Unable to add product'
+
+        return NextResponse.json({ success: false, message }, { status: 500 })
 
     }
 }
